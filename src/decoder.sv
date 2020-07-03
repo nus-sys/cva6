@@ -104,6 +104,10 @@ module decoder (
                                 12'b0: ecall  = 1'b1;
                                 // EBREAK -> inject exception
                                 12'b1: ebreak = 1'b1;
+                                // URET
+                                12'b10: begin
+                                    instruction_o.op = URET;
+                                end
                                 // SRET
                                 12'b1_0000_0010: begin
                                     instruction_o.op = ariane_pkg::SRET;

@@ -38,6 +38,7 @@ class ex_trace_item;
             riscv::ENV_CALL_MMODE:        this.cause_s = "Environment Call Machine Mode";
             riscv::INSTR_PAGE_FAULT:      this.cause_s = "Instruction Page Fault";
             riscv::LOAD_PAGE_FAULT:       this.cause_s = "Load Page Fault";
+            riscv::MPKEY_MISMATCH_FAULT:  this.cause_s = "Donky Mismatch Fault";
             riscv::STORE_PAGE_FAULT:      this.cause_s = "Store Page Fault";
             riscv::S_SW_INTERRUPT:        this.cause_s = "Supervisor Software Interrupt";
             riscv::M_SW_INTERRUPT:        this.cause_s = "Machine Software Interrupt";

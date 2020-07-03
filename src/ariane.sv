@@ -153,6 +153,7 @@ module ariane #(
   logic                     mxr_csr_ex;
   logic [43:0]              satp_ppn_csr_ex;
   logic [0:0]               asid_csr_ex;
+  riscv::csr_mpkey_config_t loaded_pkey_csr_ex;
   logic [11:0]              csr_addr_ex_csr;
   fu_op                     csr_op_commit_csr;
   logic [63:0]              csr_wdata_commit_csr;
@@ -404,6 +405,7 @@ module ariane #(
     .mxr_i                  ( mxr_csr_ex                  ), // from CSR
     .satp_ppn_i             ( satp_ppn_csr_ex             ), // from CSR
     .asid_i                 ( asid_csr_ex                 ), // from CSR
+    .loaded_pkey_i          ( loaded_pkey_csr_ex          ), // from CSR
     .icache_areq_i          ( icache_areq_cache_ex        ),
     .icache_areq_o          ( icache_areq_ex_cache        ),
     // DCACHE interfaces
@@ -489,6 +491,7 @@ module ariane #(
     .mxr_o                  ( mxr_csr_ex                    ),
     .satp_ppn_o             ( satp_ppn_csr_ex               ),
     .asid_o                 ( asid_csr_ex                   ),
+    .loaded_pkey_o          ( loaded_pkey_csr_ex            ),
     .tvm_o                  ( tvm_csr_id                    ),
     .tw_o                   ( tw_csr_id                     ),
     .tsr_o                  ( tsr_csr_id                    ),
@@ -795,4 +798,3 @@ module ariane #(
 //pragma translate_on
 
 endmodule // ariane
-

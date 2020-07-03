@@ -210,7 +210,7 @@ package ariane_pkg;
                                      | (RVF <<  5)  // F - Single precsision floating-point extension
                                      | (1   <<  8)  // I - RV32I/64I/128I base ISA
                                      | (1   << 12)  // M - Integer Multiply/Divide extension
-                                     | (0   << 13)  // N - User level interrupts supported
+                                     | (1   << 13)  // N - User level interrupts supported
                                      | (1   << 18)  // S - Supervisor mode implemented
                                      | (1   << 20)  // U - User mode implemented
                                      | (NSX << 23)  // X - Non-standard extensions present
@@ -251,7 +251,7 @@ package ariane_pkg;
     localparam bit ENABLE_WFI = 1'b1;
     localparam bit ZERO_TVAL = 1'b0;
 `endif
-    // read mask for SSTATUS over MMSTATUS
+    // read mask for SSTATUS over MSTATUS
     localparam logic [63:0] SMODE_STATUS_READ_MASK = riscv::SSTATUS_UIE
                                                    | riscv::SSTATUS_SIE
                                                    | riscv::SSTATUS_SPIE
@@ -271,6 +271,13 @@ package ariane_pkg;
                                                     | riscv::SSTATUS_FS
                                                     | riscv::SSTATUS_SUM
                                                     | riscv::SSTATUS_MXR;
+
+    // read mask for USTATUS over MSTATUS
+    localparam logic [63:0] UMODE_STATUS_READ_MASK = riscv::USTATUS_UIE
+                                                   | riscv::USTATUS_UPIE;
+
+    localparam logic [63:0] UMODE_STATUS_WRITE_MASK = riscv::USTATUS_UIE
+                                                   | riscv::USTATUS_UPIE;
     // ---------------
     // Fetch Stage
     // ---------------
@@ -444,7 +451,7 @@ package ariane_pkg;
                                // set lower than operations
                                SLTS, SLTU,
                                // CSR functions
-                               MRET, SRET, DRET, ECALL, WFI, FENCE, FENCE_I, SFENCE_VMA, CSR_WRITE, CSR_READ, CSR_SET, CSR_CLEAR,
+                               MRET, SRET, URET, DRET, ECALL, WFI, FENCE, FENCE_I, SFENCE_VMA, CSR_WRITE, CSR_READ, CSR_SET, CSR_CLEAR,
                                // LSU functions
                                LD, SD, LW, LWU, SW, LH, LHU, SH, LB, SB, LBU,
                                // Atomic Memory Operations

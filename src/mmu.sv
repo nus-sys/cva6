@@ -52,6 +52,7 @@ module mmu #(
         // input logic flag_mprv_i,
         input logic [43:0]                      satp_ppn_i,
         input logic [ASID_WIDTH-1:0]            asid_i,
+        input riscv::csr_mpkey_config_t         loaded_pkey_i,
         input logic                             flush_tlb_i,
         // Performance counters
         output logic                            itlb_miss_o,
@@ -63,6 +64,8 @@ module mmu #(
 
     logic        iaccess_err;   // insufficient privilege to access this instruction page
     logic        daccess_err;   // insufficient privilege to access this data page
+    logic        pkey_daccess_err;   // insufficient protection key privilege to access this data page
+    logic        pkey_dspecial_page_err; // additional constraints because the excpetion handler has to be reachable
     logic        ptw_active;    // PTW is currently walking a page table
     logic        walking_instr; // PTW is walking because of an ITLB miss
     logic        ptw_error;     // PTW threw an exception
@@ -283,6 +286,19 @@ module mmu #(
         // if SUM is enabled
         daccess_err = (ld_st_priv_lvl_i == riscv::PRIV_LVL_S && !sum_i && dtlb_pte_q.u) || // SUM is not set and we are trying to access a user page in supervisor mode
                       (ld_st_priv_lvl_i == riscv::PRIV_LVL_U && !dtlb_pte_q.u);            // this is not a user page but we are in user mode and trying to access it
+
+
+        // Access to the page is denied if
+        pkey_daccess_err = (dtlb_pte_q.pkey_tag != loaded_pkey_i.csr_mpkey_slots.slot_0_mpkey)
+                          && (dtlb_pte_q.pkey_tag != loaded_pkey_i.csr_mpkey_slots.slot_1_mpkey)
+                          && (dtlb_pte_q.pkey_tag != loaded_pkey_i.csr_mpkey_slots.slot_2_mpkey)
+                          && (dtlb_pte_q.pkey_tag != loaded_pkey_i.csr_mpkey_slots.slot_3_mpkey)
+                          && (|dtlb_pte_q.pkey_tag != 1'b0)
+                          && (&dtlb_pte_q.pkey_tag != 1'b1)
+                          && (ld_st_priv_lvl_i == riscv::PRIV_LVL_U)
+                          && (loaded_pkey_i.mode == 1'b0);
+
+
         // translation is enabled and no misaligned exception occurred
         if (en_ld_st_translation_i && !misaligned_ex_q.valid) begin
             lsu_valid_o = 1'b0;
@@ -307,11 +323,23 @@ module mmu #(
                     // also check if the dirty flag is set
                     if (!dtlb_pte_q.w || daccess_err || !dtlb_pte_q.d) begin
                         lsu_exception_o = {riscv::STORE_PAGE_FAULT, lsu_vaddr_q, 1'b1};
+                    end else if (pkey_daccess_err) begin
+                        lsu_exception_o = {riscv::MPKEY_MISMATCH_FAULT, lsu_vaddr_q, 1'b1};
+                        // The key matches but the associated key has the write disabled.
+                    end else if ( (dtlb_pte_q.pkey_tag == loaded_pkey_i.csr_mpkey_slots.slot_0_mpkey && loaded_pkey_i.csr_mpkey_slots.slot_0_wd == 1'b1) ||
+                         (dtlb_pte_q.pkey_tag == loaded_pkey_i.csr_mpkey_slots.slot_1_mpkey && loaded_pkey_i.csr_mpkey_slots.slot_1_wd == 1'b1) ||
+                         (dtlb_pte_q.pkey_tag == loaded_pkey_i.csr_mpkey_slots.slot_2_mpkey && loaded_pkey_i.csr_mpkey_slots.slot_2_wd == 1'b1) ||
+                         (dtlb_pte_q.pkey_tag == loaded_pkey_i.csr_mpkey_slots.slot_3_mpkey && loaded_pkey_i.csr_mpkey_slots.slot_3_wd == 1'b1) )
+                    begin
+                      // alternatively a store pagefault may be raised
+                      lsu_exception_o = {riscv::MPKEY_MISMATCH_FAULT, lsu_vaddr_q, 1'b1};
                     end
 
                 // this is a load, check for sufficient access privileges - throw a page fault if necessary
                 end else if (daccess_err) begin
                     lsu_exception_o = {riscv::LOAD_PAGE_FAULT, lsu_vaddr_q, 1'b1};
+                end else if (pkey_daccess_err) begin
+                    lsu_exception_o = {riscv::MPKEY_MISMATCH_FAULT, lsu_vaddr_q, 1'b1};
                 end
             end else
 

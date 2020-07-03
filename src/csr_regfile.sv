@@ -63,7 +63,8 @@ module csr_regfile #(
     output logic                  sum_o,
     output logic                  mxr_o,
     output logic [43:0]           satp_ppn_o,
-    output logic [AsidWidth-1:0] asid_o,
+    output logic [AsidWidth-1:0]  asid_o,
+    output riscv::csr_mpkey_config_t   loaded_pkey_o,
     // external interrupts
     input  logic [1:0]            irq_i,                      // external interrupt in
     input  logic                  ipi_i,                      // inter processor interrupt -> connected to machine mode sw
@@ -94,6 +95,7 @@ module csr_regfile #(
     logic  mprv;
     logic  mret;  // return from M-mode exception
     logic  sret;  // return from S-mode exception
+    logic  uret;  // return from U-mode exception
     logic  dret;  // return from debug mode
     // CSR write causes us to mark the FPU state as dirty
     logic  dirty_fp_state_csr;
@@ -121,10 +123,17 @@ module csr_regfile #(
     logic [63:0] mtval_q,     mtval_d;
 
     logic [63:0] stvec_q,     stvec_d;
+    logic [63:0] sedeleg_q,   sedeleg_d;
+    logic [63:0] sideleg_q,   sideleg_d;
     logic [63:0] sscratch_q,  sscratch_d;
     logic [63:0] sepc_q,      sepc_d;
     logic [63:0] scause_q,    scause_d;
     logic [63:0] stval_q,     stval_d;
+    logic [63:0] utvec_q,     utvec_d;
+    logic [63:0] uscratch_q,  uscratch_d;
+    logic [63:0] uepc_q,      uepc_d;
+    logic [63:0] ucause_q,    ucause_d;
+    logic [63:0] utval_q,     utval_d;
     logic [63:0] dcache_q,    dcache_d;
     logic [63:0] icache_q,    icache_d;
 
@@ -134,6 +143,9 @@ module csr_regfile #(
     logic [63:0] instret_q,   instret_d;
 
     riscv::fcsr_t fcsr_q, fcsr_d;
+
+    riscv::csr_mpkey_config_t csr_mpkey_q, csr_mpkey_d;
+
     // ----------------
     // Assignments
     // ----------------
@@ -195,6 +207,8 @@ module csr_regfile #(
                 end
                 riscv::CSR_SIE:                csr_rdata = mie_q & mideleg_q;
                 riscv::CSR_SIP:                csr_rdata = mip_q & mideleg_q;
+                riscv::CSR_SEDELEG:            csr_rdata = sedeleg_q;
+                riscv::CSR_SIDELEG:            csr_rdata = sideleg_q;
                 riscv::CSR_STVEC:              csr_rdata = stvec_q;
                 riscv::CSR_SCOUNTEREN:         csr_rdata = 64'b0; // not implemented
                 riscv::CSR_SSCRATCH:           csr_rdata = sscratch_q;
@@ -209,9 +223,22 @@ module csr_regfile #(
                         csr_rdata = satp_q;
                     end
                 end
+                // user-mode registers (N extension)
+                riscv::CSR_USTATUS: begin
+                    csr_rdata = mstatus_q & ariane_pkg::UMODE_STATUS_READ_MASK;
+                end
+                riscv::CSR_UIE:                csr_rdata = mie_q & mideleg_q & sideleg_q;
+                riscv::CSR_UIP:                csr_rdata = mip_q & mideleg_q & sideleg_q;
+                riscv::CSR_UTVEC:              csr_rdata = utvec_q;
+                riscv::CSR_USCRATCH:           csr_rdata = uscratch_q;
+                riscv::CSR_UEPC:               csr_rdata = uepc_q;
+                riscv::CSR_UCAUSE:             csr_rdata = ucause_q;
+                riscv::CSR_UTVAL:              csr_rdata = utval_q;
+                riscv::CSR_MPK:                csr_rdata = csr_mpkey_q;
                 // machine mode registers
                 riscv::CSR_MSTATUS:            csr_rdata = mstatus_q;
                 riscv::CSR_MISA:               csr_rdata = ISA_CODE;
+                riscv::CSR_UISA:               csr_rdata = ISA_CODE;
                 riscv::CSR_MEDELEG:            csr_rdata = medeleg_q;
                 riscv::CSR_MIDELEG:            csr_rdata = mideleg_q;
                 riscv::CSR_MIE:                csr_rdata = mie_q;
@@ -228,6 +255,9 @@ module csr_regfile #(
                 riscv::CSR_MHARTID:            csr_rdata = hart_id_i;
                 riscv::CSR_MCYCLE:             csr_rdata = cycle_q;
                 riscv::CSR_MINSTRET:           csr_rdata = instret_q;
+                // Usermode accessible cycle and instruction counter
+                riscv::CSR_CYCLE:              csr_rdata = cycle_q;
+                riscv::CSR_INSTRET:            csr_rdata = instret_q;
                 // Counters and Timers
                 riscv::CSR_ML1_ICACHE_MISS,
                 riscv::CSR_ML1_DCACHE_MISS,
@@ -303,6 +333,7 @@ module csr_regfile #(
         perf_data_o             = 'b0;
 
         fcsr_d                  = fcsr_q;
+        csr_mpkey_d             = csr_mpkey_q;
 
         priv_lvl_d              = priv_lvl_q;
         debug_mode_d            = debug_mode_q;
@@ -335,12 +366,20 @@ module csr_regfile #(
         dcache_d                = dcache_q;
         icache_d                = icache_q;
 
+        sedeleg_d               = sedeleg_q;
+        sideleg_d               = sideleg_q;
         sepc_d                  = sepc_q;
         scause_d                = scause_q;
         stvec_d                 = stvec_q;
         sscratch_d              = sscratch_q;
         stval_d                 = stval_q;
         satp_d                  = satp_q;
+
+        uepc_d                  = uepc_q;
+        ucause_d                = ucause_q;
+        utvec_d                 = utvec_q;
+        uscratch_d              = uscratch_q;
+        utval_d                 = utval_q;
 
         en_ld_st_translation_d  = en_ld_st_translation_q;
         dirty_fp_state_csr      = 1'b0;
@@ -420,11 +459,29 @@ module csr_regfile #(
                     // this instruction has side-effects
                     flush_o = 1'b1;
                 end
+                // machine exception delegation register
+                // 0 - 15 exceptions supported
+                riscv::CSR_SEDELEG: begin
+                  // Exceptions in mask can be delegated
+                    mask = (1 << riscv::ENV_CALL_UMODE) |
+                           (1 << riscv::MPKEY_MISMATCH_FAULT);
+                    sedeleg_d = (sedeleg_q & ~mask) | (csr_wdata & mask);
+                end
+                // machine interrupt delegation register
+                // we do not support user interrupt delegation
+                riscv::CSR_SIDELEG: begin
+                    mask = riscv::MIP_SSIP | riscv::MIP_STIP | riscv::MIP_SEIP;
+                    sideleg_d = (sideleg_q & ~mask) | (csr_wdata & mask);
+                end
                 // even machine mode interrupts can be visible and set-able to supervisor
                 // if the corresponding bit in mideleg is set
                 riscv::CSR_SIE: begin
                     // the mideleg makes sure only delegate-able register (and therefore also only implemented registers) are written
                     mie_d = (mie_q & ~mideleg_q) | (csr_wdata & mideleg_q);
+                end
+                riscv::CSR_UIE: begin
+                    // the mideleg makes sure only delegate-able register (and therefore also only implemented registers) are written
+                    mie_d = ((mie_q & ~mideleg_q) & ~(sideleg_q)) | ((csr_wdata & mideleg_q) & ~(sideleg_q));
                 end
 
                 riscv::CSR_SIP: begin
@@ -432,13 +489,60 @@ module csr_regfile #(
                     mask = riscv::MIP_SSIP & mideleg_q;
                     mip_d = (mip_q & ~mask) | (csr_wdata & mask);
                 end
+                riscv::CSR_UIP: begin
+                    // only the userlevel software interrupt is write-able, iff delegated
+                    mask = riscv::MIP_USIP & sideleg_q;
+                    mip_d = (mip_q & ~mask) | (csr_wdata & mask);
+                end
 
                 riscv::CSR_SCOUNTEREN:;
-                riscv::CSR_STVEC:              stvec_d     = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                riscv::CSR_STVEC: begin
+                    stvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                    // If we are in vector mode, this implementation may require the additional
+                    // alignment constraint of 64 * 4 bytes
+                    if (csr_wdata[0]) begin
+                        stvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                    end
+                end
                 riscv::CSR_SSCRATCH:           sscratch_d  = csr_wdata;
                 riscv::CSR_SEPC:               sepc_d      = {csr_wdata[63:1], 1'b0};
                 riscv::CSR_SCAUSE:             scause_d    = csr_wdata;
                 riscv::CSR_STVAL:              stval_d     = csr_wdata;
+                riscv::CSR_UTVEC: begin
+                    // Utvec can only be written to in S or M mode
+                    // or if we're in the special mode
+                    if (   priv_lvl_o == riscv::PRIV_LVL_S
+                        || priv_lvl_o == riscv::PRIV_LVL_M
+                        || (priv_lvl_o == riscv::PRIV_LVL_U && csr_mpkey_q.mode == 1'b1)
+                    ) begin
+                        utvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                        // If we are in vector mode, this implementation requires the additional
+                        // alignment constraint of 64 * 4 bytes
+                        if (csr_wdata[0]) begin
+                            utvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                        end
+                    end
+                end
+                //riscv::CSR_USCRATCH:         uscratch_d  = csr_wdata;
+                riscv::CSR_USCRATCH: begin
+                    if (   priv_lvl_o == riscv::PRIV_LVL_S
+                        || priv_lvl_o == riscv::PRIV_LVL_M
+                        || (priv_lvl_o == riscv::PRIV_LVL_U && csr_mpkey_q.mode == 1'b1)
+                    ) begin
+                      uscratch_d = csr_wdata;
+                    end
+                end
+                riscv::CSR_UEPC:               uepc_d      = {csr_wdata[63:1], 1'b0};
+                riscv::CSR_UCAUSE:             ucause_d    = csr_wdata;
+                riscv::CSR_UTVAL:              utval_d     = csr_wdata;
+                // ustatus is a subset of mstatus - mask it accordingly
+                riscv::CSR_USTATUS: begin
+                    mask = ariane_pkg::UMODE_STATUS_WRITE_MASK;
+                    mstatus_d = (mstatus_q & ~mask) | (csr_wdata & mask);
+                    // this instruction has side-effects
+                    flush_o = 1'b1;
+                end
+
                 // supervisor address translation and protection
                 riscv::CSR_SATP: begin
                     // intercept SATP writes if in S-Mode and TVM is enabled
@@ -462,21 +566,23 @@ module csr_regfile #(
                     if (!FP_PRESENT) begin
                         mstatus_d.fs = riscv::Off;
                     end
-                    mstatus_d.upie = 1'b0;
-                    mstatus_d.uie  = 1'b0;
                     // this register has side-effects on other registers, flush the pipeline
                     flush_o        = 1'b1;
                 end
                 // MISA is WARL (Write Any Value, Reads Legal Value)
                 riscv::CSR_MISA:;
+                // UISA is WARL (Write Any Value, Reads Legal Value)
+                riscv::CSR_UISA:;
                 // machine exception delegation register
                 // 0 - 15 exceptions supported
                 riscv::CSR_MEDELEG: begin
+                // Exceptions in mask can be delegated
                     mask = (1 << riscv::INSTR_ADDR_MISALIGNED) |
                            (1 << riscv::BREAKPOINT) |
                            (1 << riscv::ENV_CALL_UMODE) |
                            (1 << riscv::INSTR_PAGE_FAULT) |
                            (1 << riscv::LOAD_PAGE_FAULT) |
+                           (1 << riscv::MPKEY_MISMATCH_FAULT) |
                            (1 << riscv::STORE_PAGE_FAULT);
                     medeleg_d = (medeleg_q & ~mask) | (csr_wdata & mask);
                 end
@@ -496,7 +602,9 @@ module csr_regfile #(
                     mtvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
                     // we are in vector mode, this implementation requires the additional
                     // alignment constraint of 64 * 4 bytes
-                    if (csr_wdata[0]) mtvec_d = {csr_wdata[63:8], 7'b0, csr_wdata[0]};
+                    if (csr_wdata[0]) begin
+                      mtvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
+                    end
                 end
                 riscv::CSR_MCOUNTEREN:;
 
@@ -542,6 +650,13 @@ module csr_regfile #(
                 riscv::CSR_MHPM_COUNTER_31: begin
                                         perf_data_o = csr_wdata;
                                         perf_we_o   = 1'b1;
+                end
+                riscv::CSR_MPK: begin
+                    if (   priv_lvl_o == riscv::PRIV_LVL_S
+                        || priv_lvl_o == riscv::PRIV_LVL_M
+                        || (priv_lvl_o == riscv::PRIV_LVL_U && csr_mpkey_q.mode == 1'b1)) begin
+                      csr_mpkey_d[63:0] = csr_wdata[63:0];
+                    end
                 end
 
                 riscv::CSR_DCACHE:             dcache_d    = csr_wdata[0]; // enable bit
@@ -594,10 +709,47 @@ module csr_regfile #(
                 // traps never transition from a more-privileged mode to a less privileged mode
                 // so if we are already in M mode, stay there
                 trap_to_priv_lvl = (priv_lvl_o == riscv::PRIV_LVL_M) ? riscv::PRIV_LVL_M : riscv::PRIV_LVL_S;
+
+                if ((ex_i.cause[63] && sideleg_q[ex_i.cause[5:0]]) ||
+                    (~ex_i.cause[63] && sedeleg_q[ex_i.cause[5:0]] &&
+                    // ecalls from usermode are only delegated to usermode if the mode bit is not set
+                    csr_mpkey_d.mode == 1'b0)) begin
+                  // traps never transition from a more-privileged mode to a less privileged mode
+                  // so if we are already in M or S mode, stay there
+                  if (priv_lvl_o == riscv::PRIV_LVL_M) begin
+                    trap_to_priv_lvl = riscv::PRIV_LVL_M;
+                  end else if (priv_lvl_o == riscv::PRIV_LVL_S) begin
+                    trap_to_priv_lvl = riscv::PRIV_LVL_S;
+                  end else begin
+                    trap_to_priv_lvl = riscv::PRIV_LVL_U;
+                    csr_mpkey_d.mode = 1'b1;
+                  end
+              end
             end
 
+            // trap to user mode
+            if (trap_to_priv_lvl == riscv::PRIV_LVL_U) begin
+                // update sstatus
+                mstatus_d.uie  = 1'b0;
+                mstatus_d.upie = mstatus_q.uie;
+                // this can either be user or supervisor mode
+                //mstatus_d.upp  = priv_lvl_q[0];
+                // set cause
+                ucause_d       = ex_i.cause;
+                // set epc
+                uepc_d         = pc_i;
+                // set utval
+                // If it's an interrupt or one of illegal_instr,... set utval to zero.
+                utval_d        = (ariane_pkg::ZERO_TVAL
+                                  && (ex_i.cause inside {
+                                    riscv::ILLEGAL_INSTR,
+                                    riscv::BREAKPOINT,
+                                    riscv::ENV_CALL_UMODE,
+                                    riscv::ENV_CALL_SMODE,
+                                    riscv::ENV_CALL_MMODE
+                                  } || ex_i.cause[63])) ? '0 : ex_i.tval;
             // trap to supervisor mode
-            if (trap_to_priv_lvl == riscv::PRIV_LVL_S) begin
+            end else if (trap_to_priv_lvl == riscv::PRIV_LVL_S) begin
                 // update sstatus
                 mstatus_d.sie  = 1'b0;
                 mstatus_d.spie = mstatus_q.sie;
@@ -759,6 +911,19 @@ module csr_regfile #(
             mstatus_d.spie = 1'b1;
         end
 
+        if (uret) begin
+            // return from exception, IF doesn't care from where we are returning
+            eret_o = 1'b1;
+            // return the previous user interrupt enable flag
+            mstatus_d.uie  = mstatus_q.upie;
+            // restore the previous privilege level which can be only usermode
+            priv_lvl_d     = riscv::PRIV_LVL_U;
+            // set upie to 1
+            mstatus_d.upie = 1'b1;
+            // disable write on the mpkey register
+            csr_mpkey_d.mode = 1'b0;
+        end
+
         // return from debug mode
         if (dret) begin
             // return from exception, IF doesn't care from where we are returning
@@ -779,6 +944,7 @@ module csr_regfile #(
         csr_read  = 1'b1;
         mret      = 1'b0;
         sret      = 1'b0;
+        uret      = 1'b0;
         dret      = 1'b0;
 
         unique case (csr_op_i)
@@ -786,6 +952,12 @@ module csr_regfile #(
             CSR_SET:   csr_wdata = csr_wdata_i | csr_rdata;
             CSR_CLEAR: csr_wdata = (~csr_wdata_i) & csr_rdata;
             CSR_READ:  csr_we    = 1'b0;
+            URET: begin
+                // the return should not have any write or read side-effects
+                csr_we   = 1'b0;
+                csr_read = 1'b0;
+                uret     = 1'b1; // signal a return from user mode
+            end
             SRET: begin
                 // the return should not have any write or read side-effects
                 csr_we   = 1'b0;
@@ -893,6 +1065,10 @@ module csr_regfile #(
             trap_vector_base_o = {stvec_q[63:2], 2'b0};
         end
 
+        if (trap_to_priv_lvl == riscv::PRIV_LVL_U) begin
+            trap_vector_base_o = {utvec_q[63:2], 2'b0};
+        end
+
         // if we are in debug mode jump to a specific address
         if (debug_mode_q) begin
             trap_vector_base_o = DmBaseAddress + dm::ExceptionAddress;
@@ -901,7 +1077,10 @@ module csr_regfile #(
         // check if we are in vectored mode, if yes then do BASE + 4 * cause
         // we are imposing an additional alignment-constraint of 64 * 4 bytes since
         // we want to spare the costly addition
-        if ((mtvec_q[0] || stvec_q[0]) && ex_i.cause[63]) begin
+        if (   (trap_to_priv_lvl == riscv::PRIV_LVL_M && mtvec_q[0])
+            || (trap_to_priv_lvl == riscv::PRIV_LVL_S && stvec_q[0])
+            || (trap_to_priv_lvl == riscv::PRIV_LVL_U && utvec_q[0])
+        ) begin
             trap_vector_base_o[7:2] = ex_i.cause[5:0];
         end
 
@@ -909,6 +1088,10 @@ module csr_regfile #(
         // we are returning from supervisor mode, so take the sepc register
         if (sret) begin
             epc_o = sepc_q;
+        end
+        // we are returning from user mode, so take the uepc register
+        if (uret) begin
+            epc_o = uepc_q;
         end
         // we are returning from debug mode, to take the dpc register
         if (dret) begin
@@ -932,6 +1115,10 @@ module csr_regfile #(
                 csr_rdata_o = csr_rdata
                             | ((irq_i[1] & mideleg_q[riscv::IRQ_S_EXT]) << riscv::IRQ_S_EXT);
             end
+            riscv::CSR_UIP: begin
+                csr_rdata_o = csr_rdata
+                            | ((irq_i[1] & mideleg_q[riscv::IRQ_U_EXT]) << riscv::IRQ_U_EXT);
+            end
             default:;
         endcase
     end
@@ -945,6 +1132,7 @@ module csr_regfile #(
     // MMU outputs
     assign satp_ppn_o       = satp_q.ppn;
     assign asid_o           = satp_q.asid[AsidWidth-1:0];
+    assign loaded_pkey_o    = csr_mpkey_q;
     assign sum_o            = mstatus_q.sum;
     // we support bare memory addressing and SV39
     assign en_translation_o = (satp_q.mode == 4'h8 && priv_lvl_o != riscv::PRIV_LVL_M)
@@ -973,6 +1161,7 @@ module csr_regfile #(
             priv_lvl_q             <= riscv::PRIV_LVL_M;
             // floating-point registers
             fcsr_q                 <= 64'b0;
+            csr_mpkey_q            <= 64'h0;
             // debug signals
             debug_mode_q           <= 1'b0;
             dcsr_q                 <= '0;
@@ -999,9 +1188,17 @@ module csr_regfile #(
             sepc_q                 <= 64'b0;
             scause_q               <= 64'b0;
             stvec_q                <= 64'b0;
+            sedeleg_q              <= 64'b0;
+            sideleg_q              <= 64'b0;
             sscratch_q             <= 64'b0;
             stval_q                <= 64'b0;
             satp_q                 <= 64'b0;
+            // user mode registers
+            uepc_q                 <= 64'b0;
+            ucause_q               <= 64'b0;
+            utvec_q                <= 64'b0;
+            uscratch_q             <= 64'b0;
+            utval_q                <= 64'b0;
             // timer and counters
             cycle_q                <= 64'b0;
             instret_q              <= 64'b0;
@@ -1013,6 +1210,8 @@ module csr_regfile #(
             priv_lvl_q             <= priv_lvl_d;
             // floating-point registers
             fcsr_q                 <= fcsr_d;
+            // memory protection key register
+            csr_mpkey_q            <= csr_mpkey_d;
             // debug signals
             debug_mode_q           <= debug_mode_d;
             dcsr_q                 <= dcsr_d;
@@ -1037,9 +1236,17 @@ module csr_regfile #(
             sepc_q                 <= sepc_d;
             scause_q               <= scause_d;
             stvec_q                <= stvec_d;
+            sedeleg_q              <= sedeleg_d;
+            sideleg_q              <= sideleg_d;
             sscratch_q             <= sscratch_d;
             stval_q                <= stval_d;
             satp_q                 <= satp_d;
+            // user mode registers
+            uepc_q                 <= uepc_d;
+            ucause_q               <= ucause_d;
+            utvec_q                <= utvec_d;
+            uscratch_q             <= uscratch_d;
+            utval_q                <= utval_d;
             // timer and counters
             cycle_q                <= cycle_d;
             instret_q              <= instret_d;

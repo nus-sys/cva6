@@ -153,6 +153,7 @@ class instr_trace_item;
 
             riscv::CSR_MSTATUS:    return "mstatus";
             riscv::CSR_MISA:       return "misa";
+            riscv::CSR_UISA:       return "uisa";
             riscv::CSR_MEDELEG:    return "medeleg";
             riscv::CSR_MIDELEG:    return "mideleg";
             riscv::CSR_MIE:        return "mie";
@@ -298,6 +299,7 @@ class instr_trace_item;
             instr_tracer_pkg::INSTR_EBREAK:   s = this.printMnemonic("ebreak");
             instr_tracer_pkg::INSTR_MRET:     s = this.printMnemonic("mret");
             instr_tracer_pkg::INSTR_SRET:     s = this.printMnemonic("sret");
+            instr_tracer_pkg::INSTR_URET:     s = this.printMnemonic("uret");
             instr_tracer_pkg::INSTR_DRET:     s = this.printMnemonic("dret");
             instr_tracer_pkg::INSTR_WFI:      s = this.printMnemonic("wfi");
             instr_tracer_pkg::INSTR_SFENCE:   s = this.printMnemonic("sfence.vma");

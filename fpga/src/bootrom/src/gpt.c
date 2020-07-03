@@ -88,6 +88,10 @@ int gpt_find_boot_partition(uint8_t* dest, uint32_t size)
         for (int j = 0; j < 72; j++)
             print_uart_byte(part_entry->name[j]);
         print_uart("\r\n");
+
+        if(i == 0){
+            size = part_entry->last_lba;
+        }
     }
 
     partition_entries_t *boot = (partition_entries_t *)(lba2_buf);

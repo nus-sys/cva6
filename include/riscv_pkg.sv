@@ -260,7 +260,7 @@ package riscv;
     // ----------------------
     // memory management, pte
     typedef struct packed {
-        logic [9:0]  reserved;
+        logic [9:0]  pkey_tag;
         logic [43:0] ppn;
         logic [1:0]  rsw;
         logic d;
@@ -289,27 +289,37 @@ package riscv;
     localparam logic [63:0] ENV_CALL_MMODE        = 11; // environment call from machine mode
     localparam logic [63:0] INSTR_PAGE_FAULT      = 12; // Instruction page fault
     localparam logic [63:0] LOAD_PAGE_FAULT       = 13; // Load page fault
+    localparam logic [63:0] MPKEY_MISMATCH_FAULT  = 14; // Memory Protection Key address access fault
     localparam logic [63:0] STORE_PAGE_FAULT      = 15; // Store page fault
     localparam logic [63:0] DEBUG_REQUEST         = 24; // Debug request
 
+    localparam int unsigned IRQ_U_SOFT  = 0;
     localparam int unsigned IRQ_S_SOFT  = 1;
     localparam int unsigned IRQ_M_SOFT  = 3;
+    localparam int unsigned IRQ_U_TIMER = 4;
     localparam int unsigned IRQ_S_TIMER = 5;
     localparam int unsigned IRQ_M_TIMER = 7;
+    localparam int unsigned IRQ_U_EXT   = 8;
     localparam int unsigned IRQ_S_EXT   = 9;
     localparam int unsigned IRQ_M_EXT   = 11;
 
+    localparam logic [63:0] MIP_USIP = 1 << IRQ_U_SOFT;
     localparam logic [63:0] MIP_SSIP = 1 << IRQ_S_SOFT;
     localparam logic [63:0] MIP_MSIP = 1 << IRQ_M_SOFT;
+    localparam logic [63:0] MIP_UTIP = 1 << IRQ_U_TIMER;
     localparam logic [63:0] MIP_STIP = 1 << IRQ_S_TIMER;
     localparam logic [63:0] MIP_MTIP = 1 << IRQ_M_TIMER;
+    localparam logic [63:0] MIP_UEIP = 1 << IRQ_U_EXT;
     localparam logic [63:0] MIP_SEIP = 1 << IRQ_S_EXT;
     localparam logic [63:0] MIP_MEIP = 1 << IRQ_M_EXT;
 
+    localparam logic [63:0] U_SW_INTERRUPT    = (1 << 63) | IRQ_U_SOFT;
     localparam logic [63:0] S_SW_INTERRUPT    = (1 << 63) | IRQ_S_SOFT;
     localparam logic [63:0] M_SW_INTERRUPT    = (1 << 63) | IRQ_M_SOFT;
+    localparam logic [63:0] U_TIMER_INTERRUPT = (1 << 63) | IRQ_U_TIMER;
     localparam logic [63:0] S_TIMER_INTERRUPT = (1 << 63) | IRQ_S_TIMER;
     localparam logic [63:0] M_TIMER_INTERRUPT = (1 << 63) | IRQ_M_TIMER;
+    localparam logic [63:0] U_EXT_INTERRUPT   = (1 << 63) | IRQ_U_EXT;
     localparam logic [63:0] S_EXT_INTERRUPT   = (1 << 63) | IRQ_S_EXT;
     localparam logic [63:0] M_EXT_INTERRUPT   = (1 << 63) | IRQ_M_EXT;
 
@@ -322,8 +332,19 @@ package riscv;
         CSR_FRM            = 12'h002,
         CSR_FCSR           = 12'h003,
         CSR_FTRAN          = 12'h800,
+        // Usermode Mode CSRs
+        CSR_USTATUS        = 12'h000,
+        CSR_UIE            = 12'h004,
+        CSR_UTVEC          = 12'h005,
+        CSR_USCRATCH       = 12'h040,
+        CSR_UEPC           = 12'h041,
+        CSR_UCAUSE         = 12'h042,
+        CSR_UTVAL          = 12'h043,
+        CSR_UIP            = 12'h044,
         // Supervisor Mode CSRs
         CSR_SSTATUS        = 12'h100,
+        CSR_SEDELEG        = 12'h102,
+        CSR_SIDELEG        = 12'h103,
         CSR_SIE            = 12'h104,
         CSR_STVEC          = 12'h105,
         CSR_SCOUNTEREN     = 12'h106,
@@ -336,6 +357,7 @@ package riscv;
         // Machine Mode CSRs
         CSR_MSTATUS        = 12'h300,
         CSR_MISA           = 12'h301,
+        CSR_UISA           = 12'h047,
         CSR_MEDELEG        = 12'h302,
         CSR_MIDELEG        = 12'h303,
         CSR_MIE            = 12'h304,
@@ -431,8 +453,13 @@ package riscv;
         CSR_HPM_COUNTER_28 = 12'hC1C,  // reserved
         CSR_HPM_COUNTER_29 = 12'hC1D,  // reserved
         CSR_HPM_COUNTER_30 = 12'hC1E,  // reserved
-        CSR_HPM_COUNTER_31 = 12'hC1F  // reserved
+        CSR_HPM_COUNTER_31 = 12'hC1F,  // reserved
+        // Memory Protection keys
+        CSR_MPK            = 12'h046
     } csr_reg_t;
+
+    localparam logic [63:0] USTATUS_UIE  = 64'h00000001;
+    localparam logic [63:0] USTATUS_UPIE = 64'h00000010;
 
     localparam logic [63:0] SSTATUS_UIE  = 64'h00000001;
     localparam logic [63:0] SSTATUS_SIE  = 64'h00000002;
@@ -491,6 +518,25 @@ package riscv;
         csr_reg_t   address;
         csr_addr_t  csr_decode;
     } csr_t;
+
+    //Memory Protection Key Config CSR
+    typedef struct packed {
+    logic               slot_3_wd;
+    logic [42:33]       slot_3_mpkey;
+    logic               slot_2_wd;
+    logic [31:22]       slot_2_mpkey;
+    logic               slot_1_wd;
+    logic [20:11]       slot_1_mpkey;
+    logic               slot_0_wd;
+    logic [9: 0]        slot_0_mpkey;
+    } csr_mpkey_slots_t;
+
+    typedef struct packed {
+        logic               mode;
+        logic [62:44]       sw;
+        csr_mpkey_slots_t   csr_mpkey_slots;
+    } csr_mpkey_config_t;
+
 
     // Floating-Point control and status register (32-bit!)
     typedef struct packed {

@@ -86,6 +86,7 @@ module ex_stage #(
     input  logic                                   mxr_i,
     input  logic [43:0]                            satp_ppn_i,
     input  logic [ASID_WIDTH-1:0]                  asid_i,
+    input  riscv::csr_mpkey_config_t               loaded_pkey_i,
     // icache translation requests
     input  icache_areq_o_t                         icache_areq_i,
     output icache_areq_i_t                         icache_areq_o,
@@ -285,6 +286,7 @@ module ex_stage #(
         .mxr_i,
         .satp_ppn_i,
         .asid_i,
+        .loaded_pkey_i,
         .flush_tlb_i,
         .itlb_miss_o,
         .dtlb_miss_o,
