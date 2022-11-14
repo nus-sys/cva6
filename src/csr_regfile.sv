@@ -125,6 +125,8 @@ module csr_regfile #(
     logic [63:0] stvec_q,     stvec_d;
     logic [63:0] sedeleg_q,   sedeleg_d;
     logic [63:0] sideleg_q,   sideleg_d;
+    logic [63:0] smpk_entry_q, smpk_entry_d;
+    logic [63:0] smpk_exit_q, smpk_exit_d;
     logic [63:0] sscratch_q,  sscratch_d;
     logic [63:0] sepc_q,      sepc_d;
     logic [63:0] scause_q,    scause_d;
@@ -210,6 +212,8 @@ module csr_regfile #(
                 riscv::CSR_SEDELEG:            csr_rdata = sedeleg_q;
                 riscv::CSR_SIDELEG:            csr_rdata = sideleg_q;
                 riscv::CSR_STVEC:              csr_rdata = stvec_q;
+                riscv::CSR_SMPK_ENTRY:         csr_rdata = smpk_entry_q;
+                riscv::CSR_SMPK_EXIT:          csr_rdata = smpk_exit_q;
                 riscv::CSR_SCOUNTEREN:         csr_rdata = 64'b0; // not implemented
                 riscv::CSR_SSCRATCH:           csr_rdata = sscratch_q;
                 riscv::CSR_SEPC:               csr_rdata = sepc_q;
@@ -368,6 +372,8 @@ module csr_regfile #(
 
         sedeleg_d               = sedeleg_q;
         sideleg_d               = sideleg_q;
+        smpk_entry_d            = smpk_entry_q;
+        smpk_exit_d             = smpk_exit_q;
         sepc_d                  = sepc_q;
         scause_d                = scause_q;
         stvec_d                 = stvec_q;
@@ -503,6 +509,12 @@ module csr_regfile #(
                     if (csr_wdata[0]) begin
                         stvec_d = {csr_wdata[63:2], 1'b0, csr_wdata[0]};
                     end
+                end
+                riscv::CSR_SMPK_ENTRY: begin
+                    smpk_entry_d = csr_wdata;
+                end
+                riscv::CSR_SMPK_EXIT: begin
+                    smpk_exit_d = csr_wdata;
                 end
                 riscv::CSR_SSCRATCH:           sscratch_d  = csr_wdata;
                 riscv::CSR_SEPC:               sepc_d      = {csr_wdata[63:1], 1'b0};
@@ -652,10 +664,14 @@ module csr_regfile #(
                                         perf_we_o   = 1'b1;
                 end
                 riscv::CSR_MPK: begin
-                    if (   priv_lvl_o == riscv::PRIV_LVL_S
-                        || priv_lvl_o == riscv::PRIV_LVL_M
-                        || (priv_lvl_o == riscv::PRIV_LVL_U && csr_mpkey_q.mode == 1'b1)) begin
-                      csr_mpkey_d[63:0] = csr_wdata[63:0];
+                    if (priv_lvl_o == riscv::PRIV_LVL_S || priv_lvl_o == riscv::PRIV_LVL_M) begin
+                        csr_mpkey_d[63:0] = csr_wdata[63:0];
+                    end else if (priv_lvl_o == riscv::PRIV_LVL_U && csr_mpkey_q.mode == 1'b1) begin
+                        if (pc_i == smpk_entry_q || pc_i == smpk_exit_q) begin
+                            csr_mpkey_d[63:0] = csr_wdata[63:0];
+                        end else begin
+                            csr_mpkey_d[63:0] = csr_wdata[63:44] | csr_mpkey_q[43:33] | csr_wdata[32:0];
+                        end
                     end
                 end
 
@@ -1190,6 +1206,8 @@ module csr_regfile #(
             stvec_q                <= 64'b0;
             sedeleg_q              <= 64'b0;
             sideleg_q              <= 64'b0;
+            smpk_entry_q           <= 64'b0;
+            smpk_exit_q            <= 64'b0;
             sscratch_q             <= 64'b0;
             stval_q                <= 64'b0;
             satp_q                 <= 64'b0;
@@ -1238,6 +1256,8 @@ module csr_regfile #(
             stvec_q                <= stvec_d;
             sedeleg_q              <= sedeleg_d;
             sideleg_q              <= sideleg_d;
+            smpk_entry_q           <= smpk_entry_d;
+            smpk_exit_q            <= smpk_exit_d;
             sscratch_q             <= sscratch_d;
             stval_q                <= stval_d;
             satp_q                 <= satp_d;

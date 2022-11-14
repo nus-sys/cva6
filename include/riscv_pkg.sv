@@ -348,6 +348,8 @@ package riscv;
         CSR_SIE            = 12'h104,
         CSR_STVEC          = 12'h105,
         CSR_SCOUNTEREN     = 12'h106,
+        CSR_SMPK_ENTRY     = 12'h107,
+        CSR_SMPK_EXIT      = 12'h108,
         CSR_SSCRATCH       = 12'h140,
         CSR_SEPC           = 12'h141,
         CSR_SCAUSE         = 12'h142,
